@@ -6,81 +6,6 @@
 BinarySymbols displaySymbols;
 
 /*
-  NOTES ABOUT NUMBER OF DIGITS:
-
-  The number of display digits is defined in the header file. Default is 4.
-  When you change this value (especially to something larger than 4), you
-  should also update the init() method so you can tell the program which
-  Arduino pins the display is connected to.
-*/
-
-/*
-  NOTES ABOUT INPUT BUFFER SIZE:
-
-  Size of the input buffer is set in the header file. The default value
-  is set to 16, with a display of 4 digits in mind. This buffer size
-  value affects the inputBuffer as well as the displayBuffer.
-
-  When modifying the buffer size, consider the following aspects.
-
-  A buffersize of 16 offers room for:
-  - 15 chars.
-  - 1 null terminator.
-
-  When the number of input characters is larger than the amount of
-  display digits, a scrolling functionality is activated. An animation
-  is created by showing the display buffer frame by frame (one frame is
-  the same length as the display). However, blank spaces need to be added
-  to the display buffer to make the output scroll in and out of view.
-  These blank spaces also use the available buffer size. 
-  
-  So, in case of a 4-digit display, a buffersize of 16 offers room for:
-  - 3 blank spaces to scroll the output into view.
-  - 9 characters for the actual output.
-  - 4 blank spaces to scroll the output out of view.
-  (When building a displaybuffer for scrolling, the null terminator is discarded).
-
-  The maximum input length in this case is 9 characters.
-  
-  The program calculates this in the init() method, using the buffersize
-  and the number of display digits constant.
-*/
-
-/*
-  NOTES ABOUT REFRESH RATE:
-
-  You can only send one display value to the segment display. By (de)activating
-  the separate digits you can decide which digit shows the input value.
-
-  To show more than 1 digit, the program very quickly switches from one digit 
-  to another, at the same time changing the output value. This means we have to
-  take in account a timing interval between the digits switching on and off.
-  This delay between the off and on state of one digit should not be greater
-  than 12 milliseconds to avoid noticeable flickering when looking straight
-  at the display. (This is based on my own observations with a 4-digit segment 
-  display). There is some flickering visible from the corner of your eye.
-
-  When there are more than 2 digits, the off-time is longer than the on-time.
-  So, the off-time (the longest interval) should not exceed 12 milliseconds.
-  
-  Interval ratio with 4 digits:
-    If on-time + off-time equals 1, than for each digit:
-      - on-time equals 1/4.
-      - off-time equals 3/4.
-    Off-time is the longest, and should not be greater than 12 milliseconds.
-    If off-time = 12 ms (3/4 of total time), on-time would be 4 ms (1/4).
-
-  This means the minimum refresh rate equals 4 ms per digit.
-  Which is 1 / 0,004 = 250 hz.
-
-  Because my current configuration uses a non-latching bit shift register,
-  high refresh rates (like 1500) cause all led segments to light up because
-  all the 'bits' are constantly being 'shoved through' the whole display.
-*/
-
-
-
-/*
   -----------------
   CONSTRUCTOR
   -----------------
@@ -99,8 +24,7 @@ Seg4DigitHC164::Seg4DigitHC164()
   -----------------
 */
 
-void Seg4DigitHC164::init(byte dataPin, byte clockPin, byte digitPin1,
-  byte digitPin2, byte digitPin3, byte digitPin4)
+void Seg4DigitHC164::init(byte dataPin, byte clockPin, byte* digitPins)
 {
   int i = 0;
 
@@ -110,9 +34,7 @@ void Seg4DigitHC164::init(byte dataPin, byte clockPin, byte digitPin1,
   pinMode(_dataPin, OUTPUT);
   pinMode(_clockPin, OUTPUT);
 
-  byte digitPins[] = { digitPin1, digitPin2, digitPin3, digitPin4 };
-
-  for (i = 0; i < numOfDisplayDigits; i++)
+  for (i = 0; i < NUM_OF_DISPLAY_DIGITS; i++)
   {
     _digitPins[i] = digitPins[i];
     pinMode(_digitPins[i], OUTPUT);
@@ -124,23 +46,25 @@ void Seg4DigitHC164::init(byte dataPin, byte clockPin, byte digitPin1,
     input length depends on the input buffer size and the number of empty
     whitespaces needed to build a scrolling animation:
 
-    maximum input length = bufferLength - all whitespaces needed for scrolling.
+    maximum input length = BUFFER_LENGTH - required blank spaces.
 
-    whitespaces: scrolling view starts with one symbol visible, so we need
-    (number of digits - 1) whitespaces. Scrolling ends with a blank display,
-    for this we need (number of digits) whitespaces.
+    Required blank spaces: scrolling view starts with one symbol visible, so 
+    we need (number of digits - 1) blank paces. Scrolling ends with a blank 
+    display, for this we need (number of digits) blank spaces.
+
+    required blank spaces = (NUM_OF_DISPLAY_DIGITS - 1) + NUM_OF_DISPLAY_DIGITS.
   */
 
-  maxInputLength = bufferLength - (numOfDisplayDigits - 1) - numOfDisplayDigits;
+  maxInputLength = BUFFER_LENGTH - (NUM_OF_DISPLAY_DIGITS - 1) - NUM_OF_DISPLAY_DIGITS;
 
   // set current frame (value shown on display) to all zeroes.
-  for (i = 0; i < numOfDisplayDigits; i++)
+  for (i = 0; i < NUM_OF_DISPLAY_DIGITS; i++)
   {
     currentFrame[i] = displaySymbols.zero;
   }
 
   // initialize current frame copy.
-  for (i = 0; i < numOfDisplayDigits; i++)
+  for (i = 0; i < NUM_OF_DISPLAY_DIGITS; i++)
   {
     currentFrameCopy[i] = displaySymbols.zero;
   }
@@ -155,7 +79,7 @@ void Seg4DigitHC164::init(byte dataPin, byte clockPin, byte digitPin1,
   // initialize variables used in display loop method.
   timeStampDigit = 0;
   currentDigit = 0; // 0 = first digit.
-  previousDigit = numOfDisplayDigits - 1; // set to last digit.
+  previousDigit = NUM_OF_DISPLAY_DIGITS - 1; // index of last digit.
   errorShown = false;
   timeStampError = 0;
   errorDuration = 3000;
@@ -163,12 +87,13 @@ void Seg4DigitHC164::init(byte dataPin, byte clockPin, byte digitPin1,
   refreshRateMillis = 1000 / refreshRate;
 
   // debug.
-  Serial.print(F("bufferLength: "));Serial.println(bufferLength);
+  Serial.print(F("BUFFER_LENGTH: "));Serial.println(BUFFER_LENGTH);
 }
 
 void Seg4DigitHC164::loop()
 /*
   - alternates between the digits.
+  - overrides output with error message (if necessary).
   - calls scrolling loop method (if necessary).
 */
 {
@@ -178,13 +103,14 @@ void Seg4DigitHC164::loop()
     previousDigit = currentDigit; // used to switch off the previous digit.
     currentDigit++;
 
-    if (currentDigit == numOfDisplayDigits)
+    if (currentDigit == NUM_OF_DISPLAY_DIGITS)
     {
       // currentDigit is zero indexed. So when currendDigit equals 
       // the number of display digits, the index is pointing one 
-      // digit 'outside' of the available display digits.
+      // digit 'outside' of the available display digits and should
+      // be reset to index 0.
       
-      currentDigit = 0; // reset to first digit.
+      currentDigit = 0;
     }
 
     digitalWrite(_digitPins[previousDigit], 0);
@@ -200,8 +126,7 @@ void Seg4DigitHC164::loop()
       removeError();
     }
   }
-  else if (scrolling)
-  // call looping method that updates frames.
+  else if (scrolling) // call looping method that updates frames.
   {   
     updateScrollingFrame();
   }
@@ -245,7 +170,7 @@ void Seg4DigitHC164::showError()
 {
   timeStampError = millis();
 
-  for (int i = 0; i < numOfDisplayDigits; i++)
+  for (int i = 0; i < NUM_OF_DISPLAY_DIGITS; i++)
   {
     currentFrameCopy[i] = currentFrame[i];
   }
@@ -334,12 +259,12 @@ void Seg4DigitHC164::buildDisplayBuffer(int pointIndex)
 void Seg4DigitHC164::processDisplayBuffer()
 // check display buffer length, activate scrolling if necessary.
 {
-  if (currentInputLength > numOfDisplayDigits)
+  if (currentInputLength > NUM_OF_DISPLAY_DIGITS)
   {
     buildScrollingBuffer();
     scrolling = true;
   }
-  else if (currentInputLength >= 0 && currentInputLength <= numOfDisplayDigits)
+  else if (currentInputLength >= 0 && currentInputLength <= NUM_OF_DISPLAY_DIGITS)
   {
     updateCurrentFrame();
     scrolling = false;
@@ -354,19 +279,19 @@ void Seg4DigitHC164::updateCurrentFrame()
 */
 {
   int i = 0;
-  int blankSpaces = numOfDisplayDigits - currentInputLength;
+  int blankSpaces = NUM_OF_DISPLAY_DIGITS - currentInputLength;
   byte input;
 
   if (blankSpaces == 0) // no blank spaces needed.
   {
-    for (i = 0; i < numOfDisplayDigits; i++)
+    for (i = 0; i < NUM_OF_DISPLAY_DIGITS; i++)
     {
       currentFrame[i] = displayBuffer[i];
     }
   }
   else // add blank spaces to the left.
   {
-    for (i = 0; i < numOfDisplayDigits; i++)
+    for (i = 0; i < NUM_OF_DISPLAY_DIGITS; i++)
     {
       if (i - blankSpaces < 0) // insert one blank space.
       {
@@ -424,8 +349,8 @@ void Seg4DigitHC164::buildScrollingBuffer()
 {
   int i = 0;
 
-  int spacesBefore = numOfDisplayDigits - 1; // start with one visible symbol.
-  int spacesAfter = numOfDisplayDigits; // end with blank display.
+  int spacesBefore = NUM_OF_DISPLAY_DIGITS - 1; // start with one visible symbol.
+  int spacesAfter = NUM_OF_DISPLAY_DIGITS; // end with blank display.
   int scrollingLength = spacesBefore + currentInputLength + spacesAfter;
 
   // copy input to a temporary array.
@@ -454,7 +379,7 @@ void Seg4DigitHC164::buildScrollingBuffer()
   }
 
   // calculate number of frames in the scrolling animation.
-  numOfscrollingFrames = scrollingLength - numOfDisplayDigits + 1;
+  numOfscrollingFrames = scrollingLength - NUM_OF_DISPLAY_DIGITS + 1;
 }
 
 void Seg4DigitHC164::updateScrollingFrame()
@@ -463,7 +388,7 @@ void Seg4DigitHC164::updateScrollingFrame()
   {
     int i = 0;
 
-    for (i = 0; i < numOfDisplayDigits; i++)
+    for (i = 0; i < NUM_OF_DISPLAY_DIGITS; i++)
     {
       currentFrame[i] = displayBuffer[i + currentScrollingFrame];
     }
@@ -482,7 +407,7 @@ void Seg4DigitHC164::updateScrollingFrame()
 void Seg4DigitHC164::removeError()
 // restores current frame to the value before the error message.
 {
-  for (int i = 0; i < numOfDisplayDigits; i++)
+  for (int i = 0; i < NUM_OF_DISPLAY_DIGITS; i++)
   {
     currentFrame[i] = currentFrameCopy[i];
   }
@@ -494,17 +419,16 @@ long Seg4DigitHC164::convertFloatToLong(int decimalPlaces)
 // converts float to long.
 {
   int i = 0;
-  float processedInput;
   long convertedInput;
 
   // bring required decimal places to the left of the decimal point.
   for (i = 0; i < decimalPlaces; i++)
   {
-    processedInput = currentInputFloat * 10;
+    currentInputFloat *= 10;
   }
 
-  // convert to long.
-  convertedInput = processedInput; // only digits left of decimal point remain.
+  // convert to long, discards everything to the right of the decimal point.
+  convertedInput = currentInputFloat;
 
   return convertedInput;
 }
@@ -514,7 +438,7 @@ int Seg4DigitHC164::getInputLength()
   int i = 0;
   int inputLength;
 
-  for (i = 0; i < bufferLength; i++)
+  for (i = 0; i < BUFFER_LENGTH; i++)
   {
     if (inputBuffer[i] == '\0')
     {
